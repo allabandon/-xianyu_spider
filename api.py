@@ -11,7 +11,19 @@ from pydantic.main import IncEx
 BASE_URL = "https://h5api.m.goofish.com/h5/{}/1.0/"
 APPKEY = "34839810"
 
-client = httpx.AsyncClient()
+client = httpx.AsyncClient(timeout=20.0)
+SEARCH_API = "mtop.taobao.idlemtopsearch.pc.search"
+
+
+def _dump_data(data: dict) -> str:
+    return json.dumps(data, separators=(",", ":"))
+
+
+def _h5_token() -> str:
+    raw = client.cookies.get("_m_h5_tk")
+    if not raw:
+        raise RuntimeError("缺少 _m_h5_tk，无法签名搜索请求")
+    return raw.split("_")[0]
 
 
 class QueryParams(BaseModel):
@@ -69,7 +81,8 @@ async def init():
     })
     await client.get("https://www.goofish.com/")
     await init_h5tk()
-    print(client.cookies)
+    if not client.cookies.get("_m_h5_tk"):
+        raise RuntimeError("初始化闲鱼 token 失败")
 
 
 async def init_h5tk():
@@ -80,10 +93,12 @@ async def init_h5tk():
     data = {"piUrl": "https://h5.m.goofish.com/wow/moyu/moyu-project/xy-site/pages/announcement"}
     qp = QueryParams.create(token=None, data=data, api="mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get",
                             spm_cnt="a21ybx.home.0.0")
-    response = await client.post(BASE_URL.format("mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get"),
-                                 params=qp.model_dump(), data={"data": data})
-    print("Get h5tk")
-    print(response.json())
+    response = await client.post(
+        BASE_URL.format("mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get"),
+        params=qp.model_dump(),
+        data={"data": _dump_data(data)},
+    )
+    response.raise_for_status()
 
 
 def generate_sign(token: str, appkey: str, data: dict, j: int):
@@ -103,14 +118,35 @@ def generate_sign(token: str, appkey: str, data: dict, j: int):
 
 
 async def search(keyword: str, page: int = 1):
-    api = "mtop.taobao.idlemtopsearch.pc.search"
-    data = {"pageNumber": page, "keyword": keyword, "fromFilter": False, "rowsPerPage": 30, "sortValue": "",
-            "sortField": "", "customDistance": "", "gps": "", "propValueStr": {}, "customGps": "",
-            "searchReqFromPage": "pcSearch", "extraFilterValue": "{}", "userPositionJson": "{}"}
-    data_final = json.dumps(data, separators=(',', ':'))
-    url = BASE_URL.format(api)
-    qp = QueryParams.create(token=client.cookies.get("_m_h5_tk").split("_")[0], data=data, api=api,
-                            spm_cnt="a21ybx.search.0.0",
-                            spm_pre="a21ybx.search.searchInput.0")
+    # 对齐原版 Playwright 点击「新发布 / 最新」后的请求体
+    data = {
+        "pageNumber": page,
+        "keyword": keyword,
+        "fromFilter": True,
+        "rowsPerPage": 30,
+        "sortValue": "desc",
+        "sortField": "create",
+        "customDistance": "",
+        "gps": "",
+        "propValueStr": {"searchFilter": ""},
+        "customGps": "",
+        "searchReqFromPage": "pcSearch",
+        "extraFilterValue": "{}",
+        "userPositionJson": "{}",
+    }
+    data_final = _dump_data(data)
+    url = BASE_URL.format(SEARCH_API)
+    qp = QueryParams.create(
+        token=_h5_token(),
+        data=data,
+        api=SEARCH_API,
+        spm_cnt="a21ybx.search.0.0",
+        spm_pre="a21ybx.search.searchInput.0",
+    )
     response = await client.post(url, params=qp.model_dump(), data={"data": data_final})
-    return response.json()
+    response.raise_for_status()
+    result = response.json()
+    ret = result.get("ret") or []
+    if not any(str(item).startswith("SUCCESS") for item in ret):
+        raise RuntimeError(f"搜索接口调用失败: {ret}")
+    return result

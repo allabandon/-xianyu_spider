@@ -7,7 +7,6 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from playwright.async_api import async_playwright
 from tortoise import Model, fields
 from tortoise.contrib.fastapi import register_tortoise
 
@@ -133,7 +132,7 @@ async def save_to_db(data_list):
 async def handle_data(data: dict):
     if str(data).find("NoneOfResult") != -1:
         return []
-    items = data.get("data", {}).get("resultList", [])
+    items = data.get("data", {}).get("resultList") or []
     res = []
     for item in items:
         main_data = await safe_get(item, "data", "item", "main", "exContent", default={})
@@ -171,77 +170,17 @@ async def handle_data(data: dict):
     return res
 
 
-async def scrape_xianyu(keyword: str, max_pages: int = 1):
-    """异步爬取闲鱼商品数据"""
-    data_list = []
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
-        page = await context.new_page()
-
-        async def on_response(response):
-            """处理API响应，解析数据"""
-            nonlocal data_list
-            if "h5api.m.goofish.com/h5/mtop.taobao.idlemtopsearch.pc.search" in response.url:
-                try:
-                    result_json = await response.json()
-                    data_list = await handle_data(result_json)
-                except Exception as e:
-                    print(f"响应处理异常: {str(e)}")
-
-        try:
-            # 访问首页并操作页面
-            await page.goto("https://www.goofish.com")
-            await page.fill('input[class*="search-input"]', keyword)
-            await page.click('button[type="submit"]')
-
-            # 如果存在弹窗广告则关闭
-            try:
-                await page.wait_for_selector("div[class*='closeIconBg']", timeout=5000)
-                await page.click("div[class*='closeIconBg']")
-            except:
-                print("未找到广告弹窗，继续执行")
-                pass
-
-            await page.click('text=新发布')
-            await page.click('text=最新')
-
-            # 注册响应监听
-            page.on("response", on_response)
-
-            # 分页处理
-            current_page = 1
-            while current_page <= max_pages:
-                print(f"正在处理第 {current_page} 页")
-                await asyncio.sleep(1)  # 等待数据加载
-
-                # 查找下一页按钮
-                next_btn = await page.query_selector("[class*='search-pagination-arrow-right']:not([disabled])")
-                if not next_btn:
-                    break
-                await next_btn.click()
-                current_page += 1
-
-        finally:
-            await browser.close()
-
-    return data_list
-
-
 async def scrape_xianyu_http(keyword: str, max_pages: int = 1):
-    async def warped_search(page):
-        async with semaphore:
-            return await handle_data(await search(keyword, page))
-
     semaphore = asyncio.Semaphore(3)
+
+    async def fetch_page(page: int):
+        async with semaphore:
+            return page, await handle_data(await search(keyword, page))
+
+    gathered = await asyncio.gather(*[fetch_page(page) for page in range(1, max_pages + 1)])
     res = []
-    tasks = []
-    for page in range(1, max_pages + 1):
-        tasks.append(warped_search(page))
-    for r in await asyncio.gather(*tasks):
-        res.extend(r)
+    for _, items in sorted(gathered, key=lambda item: item[0]):
+        res.extend(items)
     return res
 
 
@@ -254,8 +193,6 @@ async def search_items(keyword: str, max_pages: int = 1):
     - max_pages: 最大爬取页数（默认1）
     """
     try:
-        # 执行爬取
-        # data_list = await scrape_xianyu(keyword, max_pages)
         data_list = await scrape_xianyu_http(keyword, max_pages)
 
         # 保存数据并统计新增记录数，同时返回新增记录的id列表
