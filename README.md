@@ -9,6 +9,7 @@
 
 - 🔍 关键词商品搜索（支持分页）
 - ⚡ 异步高性能爬取（HTTP 直连搜索接口，按最新发布排序）
+- 🔐 支持扫码登录和扫脸认证
 - 🛡️ 智能数据去重（基于链接特征哈希值）
 - 💾 数据持久化存储（关系数据库）
 - 📊 返回新增记录统计信息
@@ -18,7 +19,8 @@
 | 组件           | 用途                     |
 |----------------|--------------------------|
 | FastAPI        | RESTful API框架          |
-| httpx          | 异步 HTTP 搜索请求       |
+| httpx          | 异步 HTTP 搜索 / 登录请求 |
+| Playwright     | 扫脸认证                 |
 | Tortoise ORM   | 异步数据库ORM            |
 | SQL            | 数据持久化存储           |
 | Uvicorn        | ASGI服务器               |
@@ -30,9 +32,10 @@
 1. 安装依赖
 ```bash
 pip install -r requirements.txt
+playwright install chromium   # 扫脸认证需要，安装一次即可
 ```
 
-2. 创建 `.env` 文件（请修改为自己的信息）
+2. 创建 `.env` 文件（可选；不配的话默认用 `data/xianyu.sqlite3`）
 ```env
 DATABASE_URL=mysql://user:password@localhost/xianyu
 ```
@@ -41,6 +44,23 @@ DATABASE_URL=mysql://user:password@localhost/xianyu
 ```bash
 python spider.py
 ```
+
+### 登录
+
+```bash
+python spider.py login
+```
+
+终端会显示登录二维码。扫码确认后，如需扫脸认证会自动打开浏览器完成。
+
+也可以：
+
+```bash
+python spider.py login --cookie    # 粘贴已登录网页的 Cookie
+python spider.py login --browser   # 直接打开官方登录页
+```
+
+登录态保存在 `data/session.json`，可通过 `GET /auth/status` 查询。
 
 ## API 文档
 
