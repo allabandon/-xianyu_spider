@@ -8,7 +8,7 @@
 ## 功能特性
 
 - 🔍 关键词商品搜索（支持分页）
-- ⚡ 异步高性能爬取（Playwright 无头浏览器）
+- ⚡ 异步高性能爬取（HTTP 直连搜索接口，按最新发布排序）
 - 🛡️ 智能数据去重（基于链接特征哈希值）
 - 💾 数据持久化存储（关系数据库）
 - 📊 返回新增记录统计信息
@@ -18,7 +18,7 @@
 | 组件           | 用途                     |
 |----------------|--------------------------|
 | FastAPI        | RESTful API框架          |
-| Playwright     | 浏览器自动化爬取         |
+| httpx          | 异步 HTTP 搜索请求       |
 | Tortoise ORM   | 异步数据库ORM            |
 | SQL            | 数据持久化存储           |
 | Uvicorn        | ASGI服务器               |
@@ -30,7 +30,6 @@
 1. 安装依赖
 ```bash
 pip install -r requirements.txt
-playwright install chromium
 ```
 
 2. 创建 `.env` 文件（请修改为自己的信息）
