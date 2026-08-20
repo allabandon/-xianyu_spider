@@ -1209,23 +1209,10 @@ def qr_login_trace(session_id: str) -> dict:
     }
 
 
-async def search(keyword: str, page: int = 1):
-    # 对齐原版 Playwright 点击「新发布 / 最新」后的请求体
-    data = {
-        "pageNumber": page,
-        "keyword": keyword,
-        "fromFilter": True,
-        "rowsPerPage": 30,
-        "sortValue": "desc",
-        "sortField": "create",
-        "customDistance": "",
-        "gps": "",
-        "propValueStr": {"searchFilter": ""},
-        "customGps": "",
-        "searchReqFromPage": "pcSearch",
-        "extraFilterValue": "{}",
-        "userPositionJson": "{}",
-    }
+async def search(keyword: str, page: int = 1, filters=None):
+    from xianyu.search_query import build_search_payload
+
+    data = build_search_payload(keyword, page, filters)
     data_final = _dump_data(data)
     url = BASE_URL.format(SEARCH_API)
     qp = QueryParams.create(

@@ -12,3 +12,14 @@ UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
+
+async def init_database() -> None:
+    from tortoise import Tortoise
+
+    await Tortoise.init(db_url=DATABASE_URL, modules={"models": ["xianyu.models"]})
+    await Tortoise.generate_schemas()
+
+
+init_database = init_database
+QR_SESSIONS_PATH = QR_SESSIONS_PATH
