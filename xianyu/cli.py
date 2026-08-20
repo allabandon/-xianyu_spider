@@ -59,10 +59,10 @@ async def run_login(
 ) -> int:
     """默认终端出登录码；需要拍脸时再开 Playwright。也支持 Cookie 或直接开官方登录页。"""
     print_fn: Printer = printer or print
-    from xianyu.mtop import init, login_snapshot
+    from xianyu.mtop import init, probe_login
 
     await init()
-    snapshot = login_snapshot()
+    snapshot = await probe_login()
     if snapshot.get("logged_in"):
         _emit(print_fn, f"已经登录，user_id={snapshot.get('user_id') or '-'}")
         return 0
@@ -130,10 +130,10 @@ async def run_qr_login(
 ) -> int:
     """先画登录码；若官方要拍脸，再弹出 Playwright 完成核身。"""
     print_fn: Printer = printer or print
-    from xianyu.mtop import init, login_snapshot, poll_qr_login, start_qr_login, submit_qr_callback
+    from xianyu.mtop import init, login_snapshot, poll_qr_login, probe_login, start_qr_login, submit_qr_callback
 
     await init()
-    snapshot = login_snapshot()
+    snapshot = await probe_login()
     if snapshot.get("logged_in"):
         _emit(print_fn, f"已经登录，user_id={snapshot.get('user_id') or '-'}")
         return 0
@@ -296,7 +296,7 @@ async def run_search(
     from tortoise import Tortoise
 
     from xianyu.config import init_database
-    from xianyu.mtop import init, login_snapshot
+    from xianyu.mtop import LOGIN_EXPIRED_HINT, init, probe_login
     from xianyu.search import save_to_db, scrape_xianyu_http
     from xianyu.search_query import SearchFilters
 
@@ -318,7 +318,7 @@ async def run_search(
         return 1
 
     await init()
-    snapshot = login_snapshot()
+    snapshot = await probe_login()
     items = await scrape_xianyu_http(keyword, pages, filters=filters)
     new_records, new_ids = (0, [])
     if save:
@@ -338,5 +338,8 @@ async def run_search(
         "new_record_ids": new_ids,
         "items": items,
     }
+    if snapshot.get("login_expired"):
+        payload["login_expired"] = True
+        payload["hint"] = snapshot.get("hint") or LOGIN_EXPIRED_HINT
     _emit(print_fn, json.dumps(payload, ensure_ascii=False, indent=2))
     return 0

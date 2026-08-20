@@ -9,7 +9,7 @@
 
 - 🔍 关键词商品搜索（支持分页、排序、价格和地区筛选）
 - ⚡ 异步高性能爬取（HTTP 直连搜索接口，默认按最新发布排序）
-- 🔐 支持扫码登录和扫脸认证
+- 🔐 支持扫码登录和扫脸认证；登录失效后搜索按未登录继续
 - 🛡️ 智能数据去重（基于链接特征哈希值）
 - 💾 数据持久化存储（关系数据库）
 - 📊 返回新增记录统计信息，以及当前是否登录态
@@ -60,7 +60,9 @@ python spider.py login --cookie    # 粘贴已登录网页的 Cookie
 python spider.py login --browser   # 直接打开官方登录页
 ```
 
-登录态保存在 `data/session.json`，可通过 `GET /auth/status` 查询。
+登录态保存在 `data/session.json`。`GET /auth/status` 会向闲鱼确认 Cookie 是否仍有效；失效则显示未登录。
+
+已登录 Cookie 失效后，搜索仍按未登录继续（HTTP 200，`logged_in: false`，并带 `login_expired`）。需要登录的接口会 401，请重新运行 `python spider.py login`。
 
 ### 搜索
 
@@ -70,7 +72,7 @@ python spider.py search 相机 --sort price_asc --min-price 100 --max-price 800 
 python spider.py search 自行车 --no-save
 ```
 
-已登录时会自动带上 `data/session.json`。默认写入数据库；`--no-save` 只打印 JSON。
+已登录时会自动带上 `data/session.json`。默认写入数据库；`--no-save` 只打印 JSON。Cookie 失效时搜索不中断，结果里会标明 `login_expired`。
 
 ## API 文档
 
