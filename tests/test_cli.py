@@ -338,6 +338,40 @@ def test_cli_search_prints_json_without_saving():
     assert '"total_results": 1' in blob
 
 
+def test_cli_search_marks_expired_login():
+    printed = _Capture()
+
+    async def fake_scrape(keyword, max_pages=1, filters=None):
+        return []
+
+    async def run():
+        with (
+            patch("xianyu.mtop.init", AsyncMock()),
+            patch(
+                "xianyu.mtop.probe_login",
+                AsyncMock(
+                    return_value={
+                        "logged_in": False,
+                        "user_id": "",
+                        "login_expired": True,
+                        "hint": "登录已失效，已按未登录继续。重新登录请运行 python spider.py login",
+                    }
+                ),
+            ),
+            patch("xianyu.search.scrape_xianyu_http", side_effect=fake_scrape),
+        ):
+            from xianyu.cli import run_search
+
+            return await run_search(keyword="手机", save=False, printer=printed)
+
+    code = asyncio.run(run())
+    assert code == 0
+    blob = "\n".join(printed.chunks)
+    assert '"logged_in": false' in blob
+    assert '"login_expired": true' in blob
+    assert "spider.py login" in blob
+
+
 def test_cli_search_requires_keyword():
     printed = _Capture()
     code = asyncio.run(__import__("xianyu.cli", fromlist=["run_search"]).run_search(keyword="", printer=printed))

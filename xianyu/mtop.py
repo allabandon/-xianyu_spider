@@ -330,6 +330,66 @@ async def fetch_login_user() -> dict:
     return _user_info
 
 
+LOGIN_EXPIRED_HINT = (
+    "登录已失效，已按未登录继续。重新登录请运行 python spider.py login"
+)
+LOGIN_REQUIRED_HINT = "未登录或登录已失效，请运行 python spider.py login"
+
+
+class LoginRequired(RuntimeError):
+    """需要有效登录态。"""
+
+
+_ANON_COOKIE_NAMES = ("_m_h5_tk", "_m_h5_tk_enc", "cna")
+
+
+async def invalidate_expired_login() -> dict:
+    """清掉失效登录 Cookie，尽量保留匿名 mtop token，方便搜索继续。"""
+    global _device_id, _user_info
+    kept = {
+        name: _cookie_value(name)
+        for name in _ANON_COOKIE_NAMES
+        if _cookie_value(name)
+    }
+    _user_info = {}
+    _device_id = None
+    client.cookies.clear()
+    for name, value in kept.items():
+        client.cookies.set(name, value, domain=".goofish.com", path="/")
+    clear_session()
+    if not _cookie_value("_m_h5_tk"):
+        try:
+            await init_h5tk()
+        except Exception:
+            pass
+    snapshot = login_snapshot()
+    snapshot["login_expired"] = True
+    snapshot["hint"] = LOGIN_EXPIRED_HINT
+    return snapshot
+
+
+async def probe_login() -> dict:
+    """向闲鱼确认登录是否仍有效。失效则降级为未登录，不抛错。"""
+    snapshot = login_snapshot()
+    if not snapshot.get("logged_in"):
+        return snapshot
+    try:
+        user = await fetch_login_user()
+    except Exception:
+        return await invalidate_expired_login()
+    snapshot = login_snapshot()
+    snapshot["user"] = user
+    return snapshot
+
+
+async def require_login() -> dict:
+    """登录失效则抛错，给必须登录的接口用。"""
+    snapshot = await probe_login()
+    if not snapshot.get("logged_in"):
+        raise LoginRequired(LOGIN_REQUIRED_HINT)
+    return snapshot
+
+
 async def login_with_cookie(cookie: str) -> dict:
     if not cookie or "=" not in cookie:
         raise ValueError("Cookie 不能为空")

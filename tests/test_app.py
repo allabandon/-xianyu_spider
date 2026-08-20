@@ -18,20 +18,55 @@ def test_auth_status_logged_out():
         assert body["logged_in"] is False
 
 
+def test_auth_user_requires_login():
+    logout()
+    with _client() as client:
+        res = client.get("/auth/user")
+        assert res.status_code == 401
+
+
 def test_cookie_login_rejects_empty():
     with _client() as client:
         res = client.post("/auth/cookie", json={"cookie": "not-a-cookie"})
         assert res.status_code == 400
 
 
-def test_login_snapshot_via_cookies_without_goofish():
+def test_auth_status_probes_goofish(monkeypatch):
+    async def fake_user():
+        return {"userId": "777"}
+
+    monkeypatch.setattr("xianyu.mtop.fetch_login_user", fake_user)
     logout()
     apply_cookies("unb=777; cookie2=abc")
     with _client() as client:
         res = client.get("/auth/status")
         assert res.status_code == 200
-        assert res.json()["logged_in"] is True
-        assert res.json()["user_id"] == "777"
+        body = res.json()
+        assert body["logged_in"] is True
+        assert body["user_id"] == "777"
+        assert body["user"]["userId"] == "777"
+        user = client.get("/auth/user")
+        assert user.status_code == 200
+        assert user.json()["logged_in"] is True
+    logout()
+
+
+def test_auth_status_expired_cookies_are_logged_out(monkeypatch):
+    async def expired():
+        raise RuntimeError("未登录或登录已失效")
+
+    monkeypatch.setattr("xianyu.mtop.fetch_login_user", expired)
+    logout()
+    apply_cookies("unb=777; cookie2=abc; _m_h5_tk=tok_1; _m_h5_tk_enc=enc")
+    with _client() as client:
+        res = client.get("/auth/status")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["logged_in"] is False
+        assert body["login_expired"] is True
+        assert "spider.py login" in body["hint"]
+        user = client.get("/auth/user")
+        assert user.status_code == 401
     logout()
 
 
@@ -175,6 +210,11 @@ def test_search_accepts_filters_and_logged_in_cookie(monkeypatch):
 
     monkeypatch.setattr("xianyu.routers.search.scrape_xianyu_http", fake_scrape)
     monkeypatch.setattr("xianyu.routers.search.save_to_db", fake_save)
+
+    async def fake_user():
+        return {"userId": "123"}
+
+    monkeypatch.setattr("xianyu.mtop.fetch_login_user", fake_user)
     logout()
     apply_cookies("unb=123; cookie2=abc")
     with _client() as client:
@@ -196,6 +236,28 @@ def test_search_accepts_filters_and_logged_in_cookie(monkeypatch):
         assert body["new_records"] == 1
         assert body["filters"]["sort"] == "price_asc"
         assert body["filters"]["city"] == "深圳"
+    logout()
+
+
+def test_search_expired_login_continues_anonymously(monkeypatch):
+    async def fake_scrape(keyword, max_pages=1, filters=None):
+        return []
+
+    async def expired():
+        raise RuntimeError("未登录或登录已失效")
+
+    monkeypatch.setattr("xianyu.routers.search.scrape_xianyu_http", fake_scrape)
+    monkeypatch.setattr("xianyu.mtop.fetch_login_user", expired)
+    logout()
+    apply_cookies("unb=123; cookie2=abc; _m_h5_tk=tok_1; _m_h5_tk_enc=enc")
+    with _client() as client:
+        res = client.post("/search/", json={"keyword": "手机"})
+        assert res.status_code == 200
+        body = res.json()
+        assert body["status"] == "success"
+        assert body["logged_in"] is False
+        assert body["login_expired"] is True
+        assert "spider.py login" in body["hint"]
     logout()
 
 

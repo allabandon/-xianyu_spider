@@ -6,10 +6,11 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from xianyu import mtop as mtop_mod
 from xianyu.mtop import (
-    fetch_login_user,
-    login_snapshot,
     login_with_cookie,
     logout,
+    probe_login,
+    require_login,
+    LoginRequired,
     poll_qr_login,
     qr_continue_context,
     qr_login_trace,
@@ -107,13 +108,15 @@ async def auth_qr_browser_status(session_id: str = Query(..., description="start
 
 @router.get("/status", summary="当前登录态")
 async def auth_status():
-    snapshot = login_snapshot()
-    if snapshot.get("logged_in"):
-        try:
-            snapshot["user"] = await fetch_login_user()
-        except Exception as exc:
-            snapshot["warning"] = str(exc)
-    return snapshot
+    return await probe_login()
+
+
+@router.get("/user", summary="当前登录用户（需有效登录）")
+async def auth_user():
+    try:
+        return await require_login()
+    except LoginRequired as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 @router.post("/logout", summary="退出登录")
