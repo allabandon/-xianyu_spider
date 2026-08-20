@@ -136,3 +136,71 @@ def test_qr_callback_rejects_missing_session():
         )
         assert res.status_code == 404
 
+
+def test_search_returns_logged_in_false_without_session(monkeypatch):
+    async def fake_scrape(keyword, max_pages=1, filters=None):
+        assert keyword == "手机"
+        assert max_pages == 1
+        assert filters is not None
+        assert filters.normalized().sort == "newest"
+        return []
+
+    monkeypatch.setattr("xianyu.routers.search.scrape_xianyu_http", fake_scrape)
+    logout()
+    with _client() as client:
+        res = client.post("/search/", json={"keyword": "手机"})
+        assert res.status_code == 200
+        body = res.json()
+        assert body["status"] == "success"
+        assert body["keyword"] == "手机"
+        assert body["logged_in"] is False
+        assert body["total_results"] == 0
+        assert body["filters"]["sort"] == "newest"
+
+
+def test_search_accepts_filters_and_logged_in_cookie(monkeypatch):
+    async def fake_scrape(keyword, max_pages=1, filters=None):
+        data = filters.normalized()
+        assert keyword == "相机"
+        assert max_pages == 2
+        assert data.sort == "price_asc"
+        assert data.min_price == 100
+        assert data.max_price == 800
+        assert data.city == "深圳"
+        return [{"商品标题": "x", "商品链接": "https://www.goofish.com/item?id=1"}]
+
+    async def fake_save(data_list):
+        assert len(data_list) == 1
+        return 1, [11]
+
+    monkeypatch.setattr("xianyu.routers.search.scrape_xianyu_http", fake_scrape)
+    monkeypatch.setattr("xianyu.routers.search.save_to_db", fake_save)
+    logout()
+    apply_cookies("unb=123; cookie2=abc")
+    with _client() as client:
+        res = client.post(
+            "/search/",
+            json={
+                "keyword": "相机",
+                "max_pages": 2,
+                "sort": "price_asc",
+                "min_price": 100,
+                "max_price": 800,
+                "city": "深圳",
+            },
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["logged_in"] is True
+        assert body["user_id"] == "123"
+        assert body["new_records"] == 1
+        assert body["filters"]["sort"] == "price_asc"
+        assert body["filters"]["city"] == "深圳"
+    logout()
+
+
+def test_search_rejects_unknown_sort():
+    with _client() as client:
+        res = client.post("/search/", json={"keyword": "手机", "sort": "hot"})
+        assert res.status_code == 422
+

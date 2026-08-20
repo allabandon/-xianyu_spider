@@ -7,12 +7,12 @@
 
 ## 功能特性
 
-- 🔍 关键词商品搜索（支持分页）
-- ⚡ 异步高性能爬取（HTTP 直连搜索接口，按最新发布排序）
+- 🔍 关键词商品搜索（支持分页、排序、价格和地区筛选）
+- ⚡ 异步高性能爬取（HTTP 直连搜索接口，默认按最新发布排序）
 - 🔐 支持扫码登录和扫脸认证
 - 🛡️ 智能数据去重（基于链接特征哈希值）
 - 💾 数据持久化存储（关系数据库）
-- 📊 返回新增记录统计信息
+- 📊 返回新增记录统计信息，以及当前是否登录态
 
 ## 技术栈
 
@@ -62,6 +62,16 @@ python spider.py login --browser   # 直接打开官方登录页
 
 登录态保存在 `data/session.json`，可通过 `GET /auth/status` 查询。
 
+### 搜索
+
+```bash
+python spider.py search 手机 --pages 3
+python spider.py search 相机 --sort price_asc --min-price 100 --max-price 800 --city 深圳
+python spider.py search 自行车 --no-save
+```
+
+已登录时会自动带上 `data/session.json`。默认写入数据库；`--no-save` 只打印 JSON。
+
 ## API 文档
 
 访问 `http://localhost:8000/docs` 查看交互式文档
@@ -75,15 +85,24 @@ POST /search/
 ```json
 {
   "keyword": "手机",
-  "max_pages": 1
+  "max_pages": 1,
+  "sort": "newest",
+  "min_price": 100,
+  "max_price": 2000,
+  "city": "深圳"
 }
 ```
+
+`sort` 可选：`newest`（默认，最新发布）、`price_asc`、`price_desc`、`default`（综合）。
 
 **响应示例**：
 ```json
 {
   "status": "success",
   "keyword": "手机",
+  "logged_in": false,
+  "user_id": "",
+  "filters": {"sort": "newest", "min_price": 100, "max_price": 2000, "city": "深圳"},
   "total_results": 30,
   "new_records": 5,
   "new_record_ids": [101,102,103,104,105]

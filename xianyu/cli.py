@@ -274,3 +274,69 @@ async def run_qr_login(
     finally:
         if stdin_task is not None and not stdin_task.done():
             stdin_task.cancel()
+
+
+async def run_search(
+    *,
+    keyword: str,
+    pages: int = 1,
+    sort: str = "newest",
+    min_price: int | None = None,
+    max_price: int | None = None,
+    province: str | None = None,
+    city: str | None = None,
+    publish_days: int | None = None,
+    save: bool = True,
+    printer: Optional[Printer] = None,
+) -> int:
+    """命令行抓取：默认按最新排序，结果打 JSON。登录态会自动带上 session。"""
+    import json
+
+    print_fn: Printer = printer or print
+    from tortoise import Tortoise
+
+    from xianyu.config import init_database
+    from xianyu.mtop import init, login_snapshot
+    from xianyu.search import save_to_db, scrape_xianyu_http
+    from xianyu.search_query import SearchFilters
+
+    keyword = (keyword or "").strip()
+    if not keyword:
+        _emit(print_fn, "请提供搜索关键词，例如: python spider.py search 手机")
+        return 1
+    try:
+        filters = SearchFilters(
+            sort=sort,
+            min_price=min_price,
+            max_price=max_price,
+            province=province,
+            city=city,
+            publish_days=publish_days,
+        ).normalized()
+    except ValueError as exc:
+        _emit(print_fn, str(exc))
+        return 1
+
+    await init()
+    snapshot = login_snapshot()
+    items = await scrape_xianyu_http(keyword, pages, filters=filters)
+    new_records, new_ids = (0, [])
+    if save:
+        await init_database()
+        try:
+            new_records, new_ids = await save_to_db(items)
+        finally:
+            await Tortoise.close_connections()
+    payload = {
+        "status": "success",
+        "keyword": keyword,
+        "logged_in": bool(snapshot.get("logged_in")),
+        "user_id": snapshot.get("user_id") or "",
+        "filters": filters.public_dict(),
+        "total_results": len(items),
+        "new_records": new_records,
+        "new_record_ids": new_ids,
+        "items": items,
+    }
+    _emit(print_fn, json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0

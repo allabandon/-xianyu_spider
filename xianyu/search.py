@@ -4,6 +4,7 @@ from datetime import datetime
 
 from xianyu.models import XianyuProduct
 from xianyu.mtop import search as mtop_search
+from xianyu.search_query import SearchFilters
 
 
 def get_md5(text: str) -> str:
@@ -92,12 +93,14 @@ async def handle_data(data: dict):
     return res
 
 
-async def scrape_xianyu_http(keyword: str, max_pages: int = 1):
+async def scrape_xianyu_http(
+    keyword: str, max_pages: int = 1, filters: SearchFilters | None = None
+):
     semaphore = asyncio.Semaphore(3)
 
     async def fetch_page(page: int):
         async with semaphore:
-            return page, await handle_data(await mtop_search(keyword, page))
+            return page, await handle_data(await mtop_search(keyword, page, filters=filters))
 
     gathered = await asyncio.gather(*[fetch_page(page) for page in range(1, max_pages + 1)])
     res = []

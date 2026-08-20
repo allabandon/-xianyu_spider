@@ -293,3 +293,53 @@ def test_cli_default_login_uses_terminal_qr():
     assert "QRLOGIN" in blob
     assert "11" in blob
     assert "官方登录页" not in blob
+
+
+def test_cli_search_prints_json_without_saving():
+    printed = _Capture()
+
+    async def fake_scrape(keyword, max_pages=1, filters=None):
+        assert keyword == "手机"
+        assert max_pages == 2
+        assert filters.normalized().sort == "price_desc"
+        return [
+            {
+                "商品标题": "测试机",
+                "当前售价": "¥100",
+                "发货地区": "深圳",
+                "卖家昵称": "店主",
+                "商品链接": "https://www.goofish.com/item?id=1",
+                "商品图片链接": "",
+                "发布时间": "未知时间",
+            }
+        ]
+
+    async def run():
+        with (
+            patch("xianyu.mtop.init", AsyncMock()),
+            patch("xianyu.mtop.login_snapshot", return_value={"logged_in": False, "user_id": ""}),
+            patch("xianyu.search.scrape_xianyu_http", side_effect=fake_scrape),
+        ):
+            from xianyu.cli import run_search
+
+            return await run_search(
+                keyword="手机",
+                pages=2,
+                sort="price_desc",
+                save=False,
+                printer=printed,
+            )
+
+    code = asyncio.run(run())
+    assert code == 0
+    blob = "\n".join(printed.chunks)
+    assert '"logged_in": false' in blob
+    assert "测试机" in blob
+    assert '"total_results": 1' in blob
+
+
+def test_cli_search_requires_keyword():
+    printed = _Capture()
+    code = asyncio.run(__import__("xianyu.cli", fromlist=["run_search"]).run_search(keyword="", printer=printed))
+    assert code == 1
+    assert "关键词" in "\n".join(printed.chunks)
