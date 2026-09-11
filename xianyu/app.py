@@ -6,7 +6,7 @@ from tortoise.contrib.fastapi import register_tortoise
 
 from xianyu.config import DATABASE_URL
 from xianyu.mtop import init as init_goofish
-from xianyu.routers import auth, search
+from xianyu.routers import auth, im, search
 
 load_dotenv()
 
@@ -16,17 +16,26 @@ def create_app(*, connect_xianyu: bool = True, db_url: str | None = None) -> Fas
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        from xianyu.models import ensure_im_schema
+
+        await ensure_im_schema()
         if connect_xianyu:
             await init_goofish()
-        yield
+        try:
+            yield
+        finally:
+            from xianyu.im_service import im_service
+
+            await im_service.stop()
 
     app = FastAPI(
         title="闲鱼 HTTP 接口",
-        description="商品搜索 + Cookie/扫码登录",
+        description="商品搜索 + Cookie/扫码登录 + 闲鱼私信",
         lifespan=lifespan,
     )
     app.include_router(search.router)
     app.include_router(auth.router)
+    app.include_router(im.router)
 
     register_tortoise(
         app,
