@@ -16,6 +16,9 @@ def create_app(*, connect_xianyu: bool = True, db_url: str | None = None) -> Fas
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        from xianyu.models import ensure_im_schema
+
+        await ensure_im_schema()
         if connect_xianyu:
             await init_goofish()
         try:

@@ -93,6 +93,7 @@ class IMService:
                 pass
             self.client = None
         self.connected = False
+        self._seen.clear()
         if self._task:
             self._task.cancel()
             try:
@@ -164,7 +165,11 @@ class IMService:
                 async for incoming in im.messages():
                     if not self.running:
                         break
-                    await self._on_incoming(incoming)
+                    try:
+                        await self._on_incoming(incoming)
+                    except Exception as exc:
+                        logger.exception("IM 入库失败，连接保持")
+                        self.last_error = f"入库失败: {exc}"
             except asyncio.CancelledError:
                 break
             except Exception as exc:
