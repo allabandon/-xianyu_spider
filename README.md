@@ -65,7 +65,17 @@ python spider.py login --browser   # 直接打开官方登录页
 
 已登录 Cookie 失效后，搜索仍按未登录继续（HTTP 200，`logged_in: false`，并带 `login_expired`）。需要登录的接口会 401，请重新运行 `python spider.py login`。
 
-### 私信（第一步）
+### 搜索
+
+```bash
+python spider.py search 手机 --pages 3
+python spider.py search 相机 --sort price_asc --min-price 100 --max-price 800 --city 深圳
+python spider.py search 自行车 --no-save
+```
+
+已登录时会自动带上 `data/session.json`。默认写入数据库；`--no-save` 只打印 JSON。Cookie 失效时搜索不中断，结果里会标明 `login_expired`。
+
+### 私信
 
 登录后启动 API，再打开闲鱼 IM 长连接。
 
@@ -86,16 +96,6 @@ curl -N http://127.0.0.1:8000/im/events   # SSE：message.received / message.sen
 ```
 
 未登录 `POST /im/start`、`POST /im/send` 返回 401。未 `start` 就发送返回 409。历史来自本机数据库，只覆盖进程连上之后收到/发出的文本。不要和网页版 IM 同时开（token 会互踢）。`GET /im/status` 里 `ws_frames` / `sync_pushes` / `parsed` 用来区分「没推到」和「推到了但没解开」：`parsed=0` 且 `sync_pushes>0` 是解码问题；`ws_frames=0` 则是连接上了但服务端没推。
-
-### 搜索
-
-```bash
-python spider.py search 手机 --pages 3
-python spider.py search 相机 --sort price_asc --min-price 100 --max-price 800 --city 深圳
-python spider.py search 自行车 --no-save
-```
-
-已登录时会自动带上 `data/session.json`。默认写入数据库；`--no-save` 只打印 JSON。Cookie 失效时搜索不中断，结果里会标明 `login_expired`。
 
 ## API 文档
 
